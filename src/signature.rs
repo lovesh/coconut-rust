@@ -1,6 +1,6 @@
 use crate::errors::CoconutError;
 use secret_sharing::polynomial::Polynomial;
-use crate::{ate_2_pairing, OtherGroup, OtherGroupVec, SignatureGroup, SignatureGroupVec};
+use crate::{ate_2_pairing, VerkeyGroup, VerkeyGroupVec, SignatureGroup, SignatureGroupVec};
 use amcl_wrapper::field_elem::{FieldElement, FieldElementVector};
 use amcl_wrapper::group_elem::{GroupElement, GroupElementVector};
 use ps_sig::errors::PSError;
@@ -12,7 +12,7 @@ use std::collections::HashSet;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Params {
     pub g: SignatureGroup,
-    pub g_tilde: OtherGroup,
+    pub g_tilde: VerkeyGroup,
     pub h: SignatureGroupVec,
 }
 
@@ -21,7 +21,7 @@ impl Params {
     /// "Setup" from paper.
     pub fn new(msg_count: usize, label: &[u8]) -> Self {
         let g = SignatureGroup::from_msg_hash(&[label, " : g".as_bytes()].concat());
-        let g_tilde = OtherGroup::from_msg_hash(&[label, " : g_tilde".as_bytes()].concat());
+        let g_tilde = VerkeyGroup::from_msg_hash(&[label, " : g_tilde".as_bytes()].concat());
         let mut h = SignatureGroupVec::with_capacity(msg_count);
         for i in 0..msg_count {
             h.push(SignatureGroup::from_msg_hash(
@@ -44,8 +44,8 @@ pub struct Sigkey {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Verkey {
-    pub X_tilde: OtherGroup,
-    pub Y_tilde: Vec<OtherGroup>,
+    pub X_tilde: VerkeyGroup,
+    pub Y_tilde: Vec<VerkeyGroup>,
 }
 
 /// Created by entity requesting a signature
@@ -204,6 +204,10 @@ impl SignatureRequest {
         }
         SignatureGroup::from_msg_hash(&bytes)
     }
+
+    pub fn h(&self) -> SignatureGroup {
+        Self::compute_h(&self.commitment, self.known_messages.as_slice())
+    }
 }
 
 impl SignatureRequestPoK {
@@ -321,6 +325,36 @@ impl SignatureRequestPoK {
 }
 
 impl SignatureRequestProof {
+    pub fn get_bytes_for_challenge(
+        &self,
+        sig_req: &SignatureRequest,
+        elgamal_pk: &SignatureGroup,
+        params: &Params,
+    ) -> Vec<u8> {
+        let mut bytes = vec![];
+        let g_bytes = params.g.to_bytes();
+        bytes.extend_from_slice(&g_bytes);
+        bytes.append(&mut self.proof_elgamal_sk.commitment.to_bytes());
+
+        for h in params.h.iter().take(sig_req.ciphertexts.len()) {
+            bytes.append(&mut h.to_bytes());
+        }
+        bytes.extend_from_slice(&g_bytes);
+        bytes.append(&mut self.proof_commitment.commitment.to_bytes());
+
+        let h = sig_req.h();
+        let h_bytes = h.to_bytes();
+        for (pok_vc_1, pok_vc_2) in self.proof_ciphertexts.iter() {
+            bytes.extend_from_slice(&g_bytes);
+            bytes.append(&mut pok_vc_1.commitment.to_bytes());
+
+            bytes.append(&mut elgamal_pk.to_bytes());
+            bytes.extend_from_slice(&h_bytes);
+            bytes.append(&mut pok_vc_2.commitment.to_bytes());
+        }
+        bytes
+    }
+
     pub fn verify(
         &self,
         sig_req: &SignatureRequest,
@@ -487,10 +521,10 @@ impl Verkey {
             assert_eq!(q, keys[i].1.Y_tilde.len());
         }
 
-        let mut X_tilde_bases = OtherGroupVec::with_capacity(threshold);
+        let mut X_tilde_bases = VerkeyGroupVec::with_capacity(threshold);
         let mut X_tilde_exps = FieldElementVector::with_capacity(threshold);
 
-        let mut Y_tilde_bases = vec![OtherGroupVec::with_capacity(threshold); q];
+        let mut Y_tilde_bases = vec![VerkeyGroupVec::with_capacity(threshold); q];
         let mut Y_tilde_exps = vec![FieldElementVector::with_capacity(threshold); q];
 
         let signer_ids = keys
@@ -595,7 +629,7 @@ mod tests {
         let sig_req_pok = SignatureRequestPoK::init(&sig_req, &elg_pk, &params);
 
         // The challenge can include other things also (if proving other predicates)
-        let challenge = FieldElement::from_msg_hash(&sig_req_pok.to_bytes());
+        let challenge_for_prover = FieldElement::from_msg_hash(&sig_req_pok.to_bytes());
 
         // Create proof once the challenge is finalized
         let hidden_msgs: FieldElementVector = msgs
@@ -605,14 +639,16 @@ mod tests {
             .collect::<Vec<FieldElement>>()
             .into();
         let sig_req_proof = sig_req_pok
-            .gen_proof(&hidden_msgs, randomness, &elg_sk, &challenge)
+            .gen_proof(&hidden_msgs, randomness, &elg_sk, &challenge_for_prover)
             .unwrap();
 
         let mut blinded_sigs = vec![];
         for i in 0..threshold {
             // Each signer verifier proof of knowledge of items of signature request before signing
+            let challenge_for_verifier = FieldElement::from_msg_hash(&sig_req_proof.get_bytes_for_challenge(&sig_req, &elg_pk, &params));
+            assert_eq!(challenge_for_prover, challenge_for_verifier);
             assert!(sig_req_proof
-                .verify(&sig_req, &elg_pk, &challenge, &params)
+                .verify(&sig_req, &elg_pk, &challenge_for_verifier, &params)
                 .unwrap());
             blinded_sigs.push(BlindSignature::new(&sig_req, &signers[i].sigkey));
         }

@@ -1,7 +1,7 @@
 // Proof of knowledge of signature. Uses `PoKOfSignature` from PS sig crate.
 
 use crate::signature::{Params, Signature, Verkey};
-use crate::{OtherGroup, OtherGroupVec, SignatureGroup, SignatureGroupVec};
+use crate::{VerkeyGroup, VerkeyGroupVec, SignatureGroup, SignatureGroupVec};
 use amcl_wrapper::group_elem::GroupElement;
 use ps_sig::keys::Params as PSParams;
 
@@ -32,7 +32,7 @@ mod tests {
         let sig_req_pok = SignatureRequestPoK::init(&sig_req, &elg_pk, &params);
 
         // The challenge can include other things also (if proving other predicates)
-        let challenge = FieldElement::from_msg_hash(&sig_req_pok.to_bytes());
+        let challenge_for_prover = FieldElement::from_msg_hash(&sig_req_pok.to_bytes());
 
         // Create proof once the challenge is finalized
         let hidden_msgs: FieldElementVector = msgs
@@ -42,14 +42,16 @@ mod tests {
             .collect::<Vec<FieldElement>>()
             .into();
         let sig_req_proof = sig_req_pok
-            .gen_proof(&hidden_msgs, randomness, &elg_sk, &challenge)
+            .gen_proof(&hidden_msgs, randomness, &elg_sk, &challenge_for_prover)
             .unwrap();
 
         let mut blinded_sigs = vec![];
         for i in 0..threshold {
             // Each signer verifier proof of knowledge of items of signature request before signing
+            let challenge_for_verifier = FieldElement::from_msg_hash(&sig_req_proof.get_bytes_for_challenge(&sig_req, &elg_pk, &params));
+            assert_eq!(challenge_for_prover, challenge_for_verifier);
             assert!(sig_req_proof
-                .verify(&sig_req, &elg_pk, &challenge, &params)
+                .verify(&sig_req, &elg_pk, &challenge_for_verifier, &params)
                 .unwrap());
             blinded_sigs.push(BlindSignature::new(&sig_req, &signers[i].sigkey));
         }
@@ -91,8 +93,8 @@ mod tests {
             revealed_msg_indices.clone(),
         )
         .unwrap();
-        let chal = FieldElement::from_msg_hash(&pok.to_bytes());
-        let proof = pok.gen_proof(&chal).unwrap();
+        let challenge_for_prover = FieldElement::from_msg_hash(&pok.to_bytes());
+        let proof = pok.gen_proof(&challenge_for_prover).unwrap();
 
         // The prover reveals these messages
         let mut revealed_msgs = HashMap::new();
@@ -100,8 +102,10 @@ mod tests {
             revealed_msgs.insert(i.clone(), msgs[*i].clone());
         }
 
+        let challenge_for_verifier = FieldElement::from_msg_hash(&proof.get_bytes_for_challenge(revealed_msg_indices, &ps_verkey, &ps_params));
+
         assert!(proof
-            .verify(&ps_verkey, &ps_params, revealed_msgs.clone(), &chal)
+            .verify(&ps_verkey, &ps_params, revealed_msgs, &challenge_for_verifier)
             .unwrap());
     }
 }

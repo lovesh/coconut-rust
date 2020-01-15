@@ -209,7 +209,7 @@ mod tests {
     use super::*;
     use secret_sharing::polynomial::Polynomial;
     use secret_sharing::shamir_secret_sharing::reconstruct_secret;
-    use crate::OtherGroupVec;
+    use crate::VerkeyGroupVec;
     use amcl_wrapper::group_elem::GroupElementVector;
     use std::collections::{HashMap, HashSet};
 
@@ -254,10 +254,10 @@ mod tests {
         }
 
         // Reconstruct public key
-        let mut recon_X_tilde_bases = OtherGroupVec::with_capacity(threshold);
+        let mut recon_X_tilde_bases = VerkeyGroupVec::with_capacity(threshold);
         let mut recon_X_tilde_exps = FieldElementVector::with_capacity(threshold);
 
-        let mut recon_Y_tilde_bases = vec![OtherGroupVec::with_capacity(threshold); msg_count];
+        let mut recon_Y_tilde_bases = vec![VerkeyGroupVec::with_capacity(threshold); msg_count];
         let mut recon_Y_tilde_exps = vec![FieldElementVector::with_capacity(threshold); msg_count];
 
         let signer_ids = signers

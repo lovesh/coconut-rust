@@ -10,7 +10,7 @@ extern crate amcl_wrapper;
 extern crate ps_sig;
 
 use ps_sig::pok_vc;
-use ps_sig::{ate_2_pairing, OtherGroup, OtherGroupVec, SignatureGroup, SignatureGroupVec};
+use ps_sig::{ate_2_pairing, VerkeyGroup, VerkeyGroupVec, SignatureGroup, SignatureGroupVec};
 
 extern crate rand;
 
