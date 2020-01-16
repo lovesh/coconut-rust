@@ -1,6 +1,6 @@
 [package]
-name = "coconut"
-version = "0.2.1"
+name = "coconut_sig"
+version = "0.2.2"
 authors = ["lovesh <lovesh.bond@gmail.com>"]
 edition = "2018"
 description = "Coconut: Threshold Issuance Selective Disclosure Credentials with Applications to Distributed Ledgers"
