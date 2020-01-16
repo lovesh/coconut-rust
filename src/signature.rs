@@ -504,7 +504,7 @@ impl Signature {
     }
 
     /// Verify a signature. Can verify unblinded sig received from a signer and the aggregate sig as well.
-    pub fn verify(&self, messages: &[FieldElement], vk: &Verkey, params: &Params) -> bool {
+    pub fn verify(&self, messages: Vec<FieldElement>, vk: &Verkey, params: &Params) -> bool {
         let p = transform_to_PS_params(params);
         let vk = transform_to_PS_verkey(vk);
         // TODO: Remove unwrap
@@ -620,10 +620,11 @@ mod tests {
         signers: &[Signer],
         params: &Params,
     ) {
-        let msgs = FieldElementVector::random(msg_count);
+        let msgs = (0..msg_count).map(|_| FieldElement::random()).collect::<Vec<FieldElement>>();
+
         let (elg_sk, elg_pk) = elgamal_keygen!(&params.g);
 
-        let (sig_req, randomness) = SignatureRequest::new(&msgs, count_hidden, &elg_pk, &params);
+        let (sig_req, randomness) = SignatureRequest::new(&FieldElementVector::from(msgs.as_slice()), count_hidden, &elg_pk, &params);
 
         // Initiate proof of knowledge of various items of Signature request
         let sig_req_pok = SignatureRequestPoK::init(&sig_req, &elg_pk, &params);
@@ -656,7 +657,7 @@ mod tests {
         let mut unblinded_sigs = vec![];
         for i in 0..threshold {
             let unblinded_sig = blinded_sigs.remove(0).unblind(&elg_sk);
-            assert!(unblinded_sig.verify(msgs.as_slice(), &signers[i].verkey, &params));
+            assert!(unblinded_sig.verify(msgs.clone(), &signers[i].verkey, &params));
             unblinded_sigs.push((signers[i].id, unblinded_sig));
         }
 
@@ -670,7 +671,7 @@ mod tests {
                 .collect::<Vec<(usize, &Verkey)>>(),
         );
 
-        assert!(aggr_sig.verify(msgs.as_slice(), &aggr_vk, &params));
+        assert!(aggr_sig.verify(msgs, &aggr_vk, &params));
     }
 
     #[test]
@@ -805,10 +806,11 @@ mod tests {
         let params = Params::new(msg_count, "test".as_bytes());
         let (_, _, signers) = trusted_party_SSS_keygen(threshold, total, &params);
 
-        let msgs = FieldElementVector::random(msg_count);
+        let msgs = (0..msg_count).map(|_| FieldElement::random()).collect::<Vec<FieldElement>>();
+
         let (elg_sk, elg_pk) = elgamal_keygen!(&params.g);
 
-        let (sig_req, randomness) = SignatureRequest::new(&msgs, count_hidden, &elg_pk, &params);
+        let (sig_req, randomness) = SignatureRequest::new(&FieldElementVector::from(msgs.as_slice()), count_hidden, &elg_pk, &params);
 
         // Signers from which signature will be requested.
         let mut signer_ids = HashSet::new();
@@ -841,7 +843,7 @@ mod tests {
         for i in &signer_ids {
             let unblinded_sig = blinded_sigs.remove(0).unblind(&elg_sk);
             // Keys at index i have id i+1
-            assert!(unblinded_sig.verify(msgs.as_slice(), &signers[*i - 1].verkey, &params));
+            assert!(unblinded_sig.verify(msgs.clone(), &signers[*i - 1].verkey, &params));
             unblinded_sigs.push((signers[*i - 1].id, unblinded_sig));
         }
 
@@ -854,6 +856,6 @@ mod tests {
 
         let aggr_vk = Verkey::aggregate(threshold, keys_to_aggr);
 
-        assert!(aggr_sig.verify(msgs.as_slice(), &aggr_vk, &params));
+        assert!(aggr_sig.verify(msgs.clone(), &aggr_vk, &params));
     }
 }

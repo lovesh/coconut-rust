@@ -24,9 +24,9 @@ mod tests {
         let params = Params::new(msg_count, "test".as_bytes());
         let (_, _, signers) = trusted_party_SSS_keygen(threshold, total, &params);
 
-        let msgs = FieldElementVector::random(msg_count);
+        let msgs = (0..msg_count).map(|_| FieldElement::random()).collect::<Vec<FieldElement>>();
         let (elg_sk, elg_pk) = elgamal_keygen!(&params.g);
-        let (sig_req, randomness) = SignatureRequest::new(&msgs, count_hidden, &elg_pk, &params);
+        let (sig_req, randomness) = SignatureRequest::new(&FieldElementVector::from(msgs.as_slice()), count_hidden, &elg_pk, &params);
 
         // Initiate proof of knowledge of various items of Signature request
         let sig_req_pok = SignatureRequestPoK::init(&sig_req, &elg_pk, &params);
@@ -72,7 +72,7 @@ mod tests {
                 .collect::<Vec<(usize, &Verkey)>>(),
         );
 
-        assert!(aggr_sig.verify(msgs.as_slice(), &aggr_vk, &params));
+        assert!(aggr_sig.verify(msgs.clone(), &aggr_vk, &params));
 
         let ps_params = transform_to_PS_params(&params);
         let ps_verkey = transform_to_PS_verkey(&aggr_vk);
@@ -88,7 +88,7 @@ mod tests {
             &ps_sig,
             &ps_verkey,
                 &ps_params,
-            msgs.as_slice(),
+            msgs.clone(),
             None,
             revealed_msg_indices.clone(),
         )
